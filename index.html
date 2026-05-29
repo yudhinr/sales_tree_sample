@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sales Dashboard</title>
+<link rel="stylesheet" href="https://unpkg.com/@tabler/icons-webfont@latest/tabler-icons.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f3;color:#1a1a1a;min-height:100vh}
+.topbar{background:#fff;border-bottom:0.5px solid #ddd;padding:12px 24px;display:flex;align-items:center;justify-content:space-between}
+.topbar h1{font-size:15px;font-weight:500}
+.topbar-right{display:flex;align-items:center;gap:10px}
+.user-badge{font-size:12px;color:#666;background:#f5f5f3;padding:4px 10px;border-radius:20px;border:0.5px solid #ddd}
+.last-updated{font-size:12px;color:#aaa}
+.btn-refresh{font-size:12px;padding:5px 12px;border:0.5px solid #ccc;border-radius:6px;background:#fff;cursor:pointer;display:flex;align-items:center;gap:4px;color:#444}
+.btn-refresh:hover{background:#f5f5f3}
+.main{padding:20px 24px;max-width:1100px;margin:0 auto}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;align-items:center}
+.filters label{font-size:12px;color:#666}
+.filters select{font-size:13px;padding:6px 10px;border-radius:6px;border:0.5px solid #ccc;background:#fff;color:#1a1a1a;cursor:pointer}
+
+/* state screens */
+.state-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:12px;text-align:center}
+.state-screen .icon{font-size:40px;color:#ccc}
+.state-screen h2{font-size:16px;font-weight:500;color:#333}
+.state-screen p{font-size:13px;color:#888;max-width:360px;line-height:1.6}
+.btn-login{font-size:13px;padding:10px 24px;border-radius:8px;border:none;background:#378ADD;color:#fff;cursor:pointer;font-weight:500;margin-top:4px}
+.btn-login:hover{background:#2a6fb5}
+.btn-login-google{display:flex;align-items:center;gap:8px;font-size:13px;padding:10px 20px;border-radius:8px;border:0.5px solid #ddd;background:#fff;color:#333;cursor:pointer;font-weight:500;margin-top:4px}
+.btn-login-google:hover{background:#f5f5f3}
+.google-icon{width:18px;height:18px}
+
+/* dashboard */
+.tree-section{background:#fff;border:0.5px solid #e0e0e0;border-radius:12px;padding:20px;margin-bottom:16px}
+.tree{display:flex;flex-direction:column;align-items:center;gap:0}
+.tree-row{display:flex;gap:12px;justify-content:center;position:relative;z-index:1}
+.node{background:#fff;border:0.5px solid #ddd;border-radius:10px;padding:10px 12px;width:145px;cursor:pointer;transition:border-color 0.15s,box-shadow 0.15s}
+.node:hover{border-color:#378ADD;box-shadow:0 0 0 2px rgba(55,138,221,0.1)}
+.node.active{border:1.5px solid #378ADD;box-shadow:0 0 0 3px rgba(55,138,221,0.12)}
+.node.empty{opacity:0.5}
+.node-label{font-size:10px;color:#888;margin-bottom:2px;letter-spacing:0.04em;text-transform:uppercase}
+.node-val{font-size:14px;font-weight:500;color:#1a1a1a;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.node-val.na{color:#bbb;font-size:12px;font-weight:400}
+.sparkline-wrap{height:34px;position:relative}
+.connectors{width:100%;height:28px;pointer-events:none}
+.connectors svg{width:100%;height:28px;overflow:visible}
+.trend-section{background:#fff;border:0.5px solid #e0e0e0;border-radius:12px;padding:16px 20px;margin-bottom:16px}
+.trend-title{font-size:13px;color:#555;margin-bottom:12px;font-weight:500}
+.trend-wrap{position:relative;width:100%;height:180px}
+.breakdown-section{background:#fff;border:0.5px solid #e0e0e0;border-radius:12px;padding:16px 20px;margin-bottom:16px}
+.section-title{font-size:12px;color:#888;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:12px}
+.breakdown-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
+.bc{background:#f8f8f6;border-radius:8px;padding:10px 12px}
+.bc-label{font-size:11px;color:#888;margin-bottom:3px}
+.bc-val{font-size:14px;font-weight:500;color:#1a1a1a}
+.bc-sub{font-size:11px;color:#aaa;margin-top:2px}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>Sales Dashboard</h1>
+  <div class="topbar-right">
+    <span class="user-badge" id="user-badge" style="display:none"></span>
+    <span class="last-updated" id="last-updated"></span>
+    <button class="btn-refresh" id="btn-refresh" onclick="loadData()" style="display:none">
+      <i class="ti ti-refresh" style="font-size:14px"></i> Refresh
+    </button>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- Loading -->
+  <div id="screen-loading" class="state-screen">
+    <i class="ti ti-loader icon"></i>
+    <h2>Memuat dashboard...</h2>
+    <p>Mengambil data dari Google Sheet</p>
+  </div>
+
+  <!-- Login required -->
+  <div id="screen-login" class="state-screen" style="display:none">
+    <i class="ti ti-lock icon"></i>
+    <h2>Login diperlukan</h2>
+    <p>Dashboard ini hanya bisa diakses oleh pengguna yang sudah diotorisasi. Login dengan akun Google kamu.</p>
+    <button class="btn-login-google" onclick="openLogin()">
+      <svg class="google-icon" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+      Login dengan Google
+    </button>
+  </div>
+
+  <!-- Access denied -->
+  <div id="screen-denied" class="state-screen" style="display:none">
+    <i class="ti ti-shield-x icon" style="color:#e74c3c"></i>
+    <h2>Akses ditolak</h2>
+    <p id="denied-msg">Akun kamu tidak memiliki akses ke dashboard ini. Hubungi admin untuk mendapatkan akses.</p>
+    <button class="btn-login-google" onclick="openLogin()" style="margin-top:8px">
+      <svg class="google-icon" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+      Ganti akun Google
+    </button>
+  </div>
+
+  <!-- Error -->
+  <div id="screen-error" class="state-screen" style="display:none">
+    <i class="ti ti-alert-circle icon" style="color:#e74c3c"></i>
+    <h2>Gagal memuat data</h2>
+    <p id="error-msg"></p>
+    <button class="btn-login" onclick="loadData()">Coba lagi</button>
+  </div>
+
+  <!-- Filters -->
+  <div class="filters" id="filters" style="display:none">
+    <label>Periode</label>
+    <select id="sel-period" onchange="render()">
+      <option value="daily">Harian</option>
+      <option value="monthly" selected>Bulanan</option>
+      <option value="yearly">Tahunan</option>
+    </select>
+    <label>Channel</label>
+    <select id="sel-channel" onchange="render()">
+      <option value="all">Semua channel</option>
+    </select>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="dashboard" style="display:none">
+    <div class="tree-section">
+      <div class="tree">
+        <div class="tree-row">
+          <div class="node" id="node-netsales" onclick="selectNode('netsales')">
+            <div class="node-label">Net Sales</div>
+            <div class="node-val" id="val-netsales">—</div>
+            <div class="sparkline-wrap"><canvas id="sp-netsales" role="img" aria-label="Trend net sales"></canvas></div>
+          </div>
+        </div>
+        <div class="connectors"><svg id="conn1"></svg></div>
+        <div class="tree-row">
+          <div class="node" id="node-aov" onclick="selectNode('aov')">
+            <div class="node-label">AOV</div>
+            <div class="node-val" id="val-aov">—</div>
+            <div class="sparkline-wrap"><canvas id="sp-aov" role="img" aria-label="Trend AOV"></canvas></div>
+          </div>
+          <div class="node" id="node-closing" onclick="selectNode('closing')">
+            <div class="node-label">Closing</div>
+            <div class="node-val" id="val-closing">—</div>
+            <div class="sparkline-wrap"><canvas id="sp-closing" role="img" aria-label="Trend closing"></canvas></div>
+          </div>
+        </div>
+        <div class="connectors"><svg id="conn2"></svg></div>
+        <div class="tree-row">
+          <div class="node" id="node-aur" onclick="selectNode('aur')">
+            <div class="node-label">AUR</div>
+            <div class="node-val" id="val-aur">—</div>
+            <div class="sparkline-wrap"><canvas id="sp-aur" role="img" aria-label="Trend AUR"></canvas></div>
+          </div>
+          <div class="node" id="node-upt" onclick="selectNode('upt')">
+            <div class="node-label">UPT</div>
+            <div class="node-val" id="val-upt">—</div>
+            <div class="sparkline-wrap"><canvas id="sp-upt" role="img" aria-label="Trend UPT"></canvas></div>
+          </div>
+          <div class="node empty" id="node-traffic" onclick="selectNode('traffic')">
+            <div class="node-label">Traffic</div>
+            <div class="node-val na" id="val-traffic">Belum ada data</div>
+            <div class="sparkline-wrap"><canvas id="sp-traffic" role="img" aria-label="Trend traffic"></canvas></div>
+          </div>
+          <div class="node empty" id="node-scr" onclick="selectNode('scr')">
+            <div class="node-label">SCR</div>
+            <div class="node-val na" id="val-scr">Belum ada data</div>
+            <div class="sparkline-wrap"><canvas id="sp-scr" role="img" aria-label="Trend SCR"></canvas></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="trend-section" id="trend-section" style="display:none">
+      <div class="trend-title" id="trend-title">—</div>
+      <div class="trend-wrap"><canvas id="trend-chart" role="img" aria-label="Trend detail"></canvas></div>
+    </div>
+
+    <div class="breakdown-section">
+      <div class="section-title">Breakdown per channel</div>
+      <div class="breakdown-grid" id="breakdown"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// const GAS_URL = "https://script.google.com/macros/u/1/s/AKfycbyDxoXrUgjfNHsps4bRyYtB3KS-xuMGBzjsi8INTgFCIZ1sFIfhKGQ2p0u8LQq02OsQ/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbyDxoXrUgjfNHsps4bRyYtB3KS-xuMGBzjsi8INTgFCIZ1sFIfhKGQ2p0u8LQq02OsQ/exec";
+
+
+const MONTHS = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Ags","Sep","Okt","Nov","Des"];
+const COLORS = {netsales:"#378ADD",aov:"#1D9E75",closing:"#D85A30",aur:"#BA7517",upt:"#7F77DD"};
+
+let RAW = [];
+let sparkCharts = {};
+let trendChart = null;
+let activeNode = null;
+
+function showScreen(id) {
+  ["screen-loading","screen-login","screen-denied","screen-error"].forEach(s => {
+    document.getElementById(s).style.display = "none";
+  });
+  if(id) document.getElementById(id).style.display = "flex";
+}
+
+function openLogin() {
+  // Buka GAS URL di tab baru supaya Google OAuth flow berjalan
+  window.open(GAS_URL, "_blank");
+  setTimeout(() => loadData(), 3000);
+}
+
+function fmt(v){
+  if(v>=1e9) return "Rp "+(v/1e9).toFixed(1)+"M";
+  if(v>=1e6) return "Rp "+(v/1e6).toFixed(1)+"jt";
+  if(v>=1e3) return "Rp "+(v/1e3).toFixed(0)+"rb";
+  return "Rp "+Math.round(v);
+}
+
+async function loadData(){
+  showScreen("screen-loading");
+  document.getElementById("dashboard").style.display = "none";
+  document.getElementById("filters").style.display = "none";
+  document.getElementById("btn-refresh").style.display = "none";
+
+  try {
+    const res = await fetch(GAS_URL, {redirect:"follow"});
+    const json = await res.json();
+
+    if(json.error === "login_required") {
+      showScreen("screen-login");
+      return;
+    }
+
+    if(json.error === "access_denied") {
+      showScreen("screen-denied");
+      document.getElementById("denied-msg").textContent =
+        `Akun ${json.email} tidak memiliki akses. Hubungi admin untuk mendapatkan akses.`;
+      return;
+    }
+
+    if(json.error) {
+      showScreen("screen-error");
+      document.getElementById("error-msg").textContent = json.message || json.error;
+      return;
+    }
+
+    // sukses
+    const rows = json.transaksi || [];
+    RAW = rows.map(r => ({
+      channel: r.channel,
+      order_id: r.order_id,
+      order_date: r.order_date,
+      item_qty: Number(r.item_qty),
+      item_price: Number(r.item_price),
+      trx_amount: Number(r.trx_amount),
+      city: r.city
+    }));
+
+    // populate channel filter
+    const channels = [...new Set(RAW.map(r=>r.channel))].sort();
+    const sel = document.getElementById("sel-channel");
+    sel.innerHTML = '<option value="all">Semua channel</option>';
+    channels.forEach(ch => {
+      const opt = document.createElement("option");
+      opt.value = ch; opt.textContent = ch;
+      sel.appendChild(opt);
+    });
+
+    // show user info
+    if(json._meta && json._meta.email) {
+      const badge = document.getElementById("user-badge");
+      badge.textContent = json._meta.email;
+      badge.style.display = "inline-block";
+    }
+
+    document.getElementById("last-updated").textContent =
+      "Update: " + new Date().toLocaleTimeString("id-ID");
+    document.getElementById("btn-refresh").style.display = "flex";
+    document.getElementById("filters").style.display = "flex";
+
+    showScreen(null);
+    document.getElementById("dashboard").style.display = "block";
+    render();
+
+  } catch(e) {
+    showScreen("screen-error");
+    document.getElementById("error-msg").textContent =
+      "Gagal terhubung ke server: " + e.message + ". Pastikan sudah login Google di browser ini.";
+  }
+}
+
+function filterData(){
+  const ch = document.getElementById("sel-channel").value;
+  return ch==="all" ? RAW : RAW.filter(r=>r.channel===ch);
+}
+
+function getKey(row, period){
+  const d = new Date(row.order_date);
+  if(period==="monthly") return d.getMonth();
+  if(period==="yearly") return d.getFullYear();
+  return row.order_date;
+}
+
+function computeMetrics(data, period){
+  const groups = {};
+  data.forEach(r => {
+    const k = getKey(r, period);
+    if(!groups[k]) groups[k]={sales:0,qty:0,orders:0,prices:[]};
+    groups[k].sales += r.trx_amount;
+    groups[k].qty += r.item_qty;
+    groups[k].orders += 1;
+    groups[k].prices.push(r.item_price);
+  });
+  let keys = Object.keys(groups);
+  if(period==="monthly") keys = keys.map(Number).sort((a,b)=>a-b);
+  else keys = keys.sort((a,b)=>a>b?1:-1);
+  const labels = period==="monthly" ? keys.map(k=>MONTHS[k]) : keys.map(String);
+  return {
+    labels,
+    netsales: keys.map(k=>groups[k].sales),
+    closing:  keys.map(k=>groups[k].orders),
+    aov:      keys.map(k=>groups[k].sales/groups[k].orders),
+    aur:      keys.map(k=>groups[k].prices.reduce((a,b)=>a+b,0)/groups[k].prices.length),
+    upt:      keys.map(k=>groups[k].qty/groups[k].orders)
+  };
+}
+
+function makeSpark(canvasId, data, color){
+  const ctx = document.getElementById(canvasId);
+  if(!ctx) return;
+  if(sparkCharts[canvasId]) sparkCharts[canvasId].destroy();
+  sparkCharts[canvasId] = new Chart(ctx,{
+    type:"line",
+    data:{labels:data.map((_,i)=>i),datasets:[{data,borderColor:color,borderWidth:1.5,pointRadius:0,tension:0.4,fill:true,backgroundColor:color+"22"}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{enabled:false}},scales:{x:{display:false},y:{display:false}},animation:{duration:300}}
+  });
+}
+
+function selectNode(key){
+  document.querySelectorAll(".node").forEach(n=>n.classList.remove("active"));
+  document.getElementById("node-"+key).classList.add("active");
+  activeNode = key;
+  const data = filterData();
+  const period = document.getElementById("sel-period").value;
+  const m = computeMetrics(data, period);
+  const labelMap = {netsales:"Net Sales",aov:"AOV",closing:"Closing",aur:"AUR",upt:"UPT",traffic:"Traffic",scr:"SCR"};
+  const trendSec = document.getElementById("trend-section");
+  trendSec.style.display = "block";
+
+  if(key==="traffic"||key==="scr"){
+    document.getElementById("trend-title").textContent = labelMap[key]+" — belum ada data (isi kolom traffic di Google Sheet)";
+    if(trendChart){trendChart.destroy();trendChart=null;}
+    return;
+  }
+
+  const map = {netsales:m.netsales,aov:m.aov,closing:m.closing,aur:m.aur,upt:m.upt};
+  document.getElementById("trend-title").textContent = "Trend: "+labelMap[key];
+  const ctx = document.getElementById("trend-chart");
+  if(trendChart) trendChart.destroy();
+  trendChart = new Chart(ctx,{
+    type:"line",
+    data:{labels:m.labels,datasets:[{label:labelMap[key],data:map[key],borderColor:COLORS[key],borderWidth:2,pointRadius:3,pointBackgroundColor:COLORS[key],tension:0.4,fill:true,backgroundColor:COLORS[key]+"22"}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{font:{size:11},autoSkip:false,maxRotation:0}},y:{ticks:{font:{size:11}},grid:{color:"rgba(0,0,0,0.05)"}}}}
+  });
+}
+
+function renderBreakdown(data){
+  const channels = [...new Set(RAW.map(r=>r.channel))].sort();
+  document.getElementById("breakdown").innerHTML = channels.map(ch=>{
+    const rows = data.filter(r=>r.channel===ch);
+    if(!rows.length) return `<div class="bc"><div class="bc-label">${ch}</div><div class="bc-val">—</div></div>`;
+    const sales = rows.reduce((a,r)=>a+r.trx_amount,0);
+    const orders = rows.length;
+    return `<div class="bc"><div class="bc-label">${ch}</div><div class="bc-val">${fmt(sales)}</div><div class="bc-sub">${orders} trx · AOV ${fmt(sales/orders)}</div></div>`;
+  }).join("");
+}
+
+function drawConnectors(){
+  requestAnimationFrame(()=>{
+    const drawConn = (svgId, pairs) => {
+      const svg = document.getElementById(svgId);
+      if(!svg) return;
+      const sr = svg.getBoundingClientRect();
+      let paths = "";
+      pairs.forEach(([pid,cid])=>{
+        const p = document.getElementById(pid);
+        const c = document.getElementById(cid);
+        if(!p||!c) return;
+        const pr=p.getBoundingClientRect(), cr=c.getBoundingClientRect();
+        const x1=pr.left+pr.width/2-sr.left, x2=cr.left+cr.width/2-sr.left;
+        const h=sr.height;
+        paths += `<path d="M${x1},0 C${x1},${h/2} ${x2},${h/2} ${x2},${h}" stroke="#ddd" stroke-width="1" fill="none"/>`;
+      });
+      svg.innerHTML = paths;
+    };
+    drawConn("conn1",[["node-netsales","node-aov"],["node-netsales","node-closing"]]);
+    drawConn("conn2",[["node-aov","node-aur"],["node-aov","node-upt"],["node-closing","node-traffic"],["node-closing","node-scr"]]);
+  });
+}
+
+function render(){
+  const data = filterData();
+  const period = document.getElementById("sel-period").value;
+  const m = computeMetrics(data, period);
+
+  const totSales = data.reduce((a,r)=>a+r.trx_amount,0);
+  const totOrders = data.length;
+  const allQty = data.reduce((a,r)=>a+r.item_qty,0);
+  const allPrices = data.map(r=>r.item_price);
+  const avgAUR = allPrices.reduce((a,b)=>a+b,0)/allPrices.length;
+
+  document.getElementById("val-netsales").textContent = fmt(totSales);
+  document.getElementById("val-aov").textContent = fmt(totSales/totOrders);
+  document.getElementById("val-closing").textContent = totOrders+" trx";
+  document.getElementById("val-aur").textContent = fmt(avgAUR);
+  document.getElementById("val-upt").textContent = (allQty/totOrders).toFixed(1)+"x";
+
+  makeSpark("sp-netsales",m.netsales,COLORS.netsales);
+  makeSpark("sp-aov",m.aov,COLORS.aov);
+  makeSpark("sp-closing",m.closing,COLORS.closing);
+  makeSpark("sp-aur",m.aur,COLORS.aur);
+  makeSpark("sp-upt",m.upt,COLORS.upt);
+
+  renderBreakdown(data);
+  drawConnectors();
+  if(activeNode && activeNode!=="traffic" && activeNode!=="scr") selectNode(activeNode);
+}
+
+window.addEventListener("resize", drawConnectors);
+loadData();
+</script>
+</body>
+</html>
